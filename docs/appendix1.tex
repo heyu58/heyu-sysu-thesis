@@ -1,62 +1,72 @@
-\chapter{补充更多细节}
+\chapter{证明细节}
+\section{生成对抗网络损失函数推导}
+记$l$是样本$x$的真实标签，而$y$则是神经网络判别器$D$给出的认为真样本的可能性，$y=D(\mathbf{x})$
+从判别器$D$的角度对某个样本i考虑
+$$L_i=y_i^{l_i}(1-y_i)^{(1-l_i)}$$
+如果$l_i=1$，上式为$L_i=y_i$，显然$y_i$预测为真的概率越大，预测越正确，$L_i$越大
+同理若$l_i=0$，上式为$L_i=1-y_i$，$y_i$预测为真的概率越大，预测越错，$L_i$越小
+因此考虑将GAN判别器$D$损失问题转变为极大似然估计问题，如何在一批样本$\{x_1,x_2,...,x_m\}$训练后，最大化预测正确率$L$
+%无标号的公式
+\begin{align*}
+        \underset{D}{max}L=\prod_{i=1}^mL_i=\prod_{i=1}^my_i^{l_i}(1-y_i)^{1-l_i}
+\end{align*}
+做数学变化，引入单调函数$\log$，并做常见的平均处理，问题转换为等价的优化问题
+\begin{align*}
+    \begin{split}
+        \underset{D}{max}\frac{1}{m}\sum_{i=1}^m\Big[\log y_i^{l_i}+\log(1-y_i)^{1-l_i}\Big] \\
+        \underset{D}{max}\frac{1}{m}\sum_{i=1}^m\Big[l_i\log D(x_i)+(1-l_i)D(x_i)\Big]
+    \end{split}
+\end{align*}
+由于标签只有在$x\sim p_{data}(x)$时为1，在$z\sim p_{seed}(x)$时为0，因此上式是期望的样本实现。我们将标签为假的样本写成有生成器输出结果$G(z)$
+\begin{align*}
+    \begin{split}
+        \underset{D}{max}\Big[\mathbb{E}_{x\sim p_{data}(x)}\log D(x)+\mathbb{E}_{z\sim p_{seed}(x)}\big(1-D(G(z))\big)\Big]
+    \end{split}
+\end{align*}
+上式只是对判别器$D$建立了优化目标，显然判别器越强，生成器生成的样本就永远会高概率判断为假。因此生成器的目标是最小化判别器的优化目标
+\begin{align*}
+    \begin{split}
+        \underset{G}{min}\underset{D}{max}\Big[\mathbb{E}_{x\sim p_{data}(x)}\log D(x)+\mathbb{E}_{z\sim p_{seed}(x)}\big(1-D(G(z))\big)\Big]
+    \end{split}
+\end{align*}
+假设生成器$G$有网络参数$\mathbf{\phi}$，判别器$D$有网络参数$\mathbf{\theta}$，我们可以从网络参数的角度给出最终的损失函数
 
-\section{补充图}
+\begin{equation}
+    \underset{G}{min}\underset{D}{max}\Big[\mathbb{E}_{x\sim p_{data}(x,\phi)}\log D(x)+\mathbb{E}_{z\sim p_{seed}(x)}\big(1-D(G(z,\theta),\phi)\big)\Big]
+\end{equation}
 
-\subsection{补充图}
+\section{扩散模型正向过程推导部分}
+参考\cite{luo2022understanding}\cite{weng2021diffusion}
+在扩散模型的前向过程中，来自训练集的图像$\mathbf{x}_0$会被添加$T$次噪声，
+使得$\mathbf{x}_T$为符合标准正态分布。大多数前向过程采样的正态分布会设置为下式
+\begin{align*}
+    \mathbf{x}_t\sim\mathcal{N}(\sqrt{1-\beta_t}\mathbf{x}_{t-1},\beta_t\mathbf{I})
+\end{align*}
+尝试从$\mathbf{x}_t$持续倒推，$\mathbf{x}_t$可以通过一个标准正态分布的样本$\epsilon_{t-1}\sim\mathcal{N}(0,\mathbf{I})$算出来：
+\begin{align*}
+    \begin{split}
+        \mathbf{x}_t=\sqrt{1-\beta_t}\mathbf{x}_{t-1}+\sqrt{\beta_t}\epsilon_{t-1}\\
+        \mathbf{x}_t=\sqrt{1-\beta_t}\Big(\sqrt{1-\beta_{t-1}}\mathbf{x}_{t-2}+\sqrt{\beta_{t-1}}\epsilon_{t-2}\Big)+\sqrt{\beta_t}\epsilon_{t-1}\\
+        \mathbf{x}_t=\sqrt{(1-\beta_t)(1-\beta_{t-1})}\mathbf{x}_{t-2}+\sqrt{(1-\beta_t)\beta_{t-1}}\epsilon_{t-2}+\sqrt{\beta_T}\epsilon_{t-1}
+    \end{split}
+\end{align*}
+服从相同均值的正态分布的两个随机向量之和所服从的分布，均值不变但方差是原随机变量方差之和。我们可以改写上式为
+\begin{align*}
+    \begin{split}
+        =\sqrt{(1-\beta_t)(1-\beta_{t-1})}\mathbf{x}_{t-2}+\sqrt{(1-\beta_t)\beta_{t-1}+\beta_t}\epsilon\\
+        =\sqrt{(1-\beta_t)(1-\beta_{t-1})}\mathbf{x}_{t-2}+\sqrt{1-(1-\beta_t)(1-\beta_{t-1})}\epsilon
+    \end{split}
+\end{align*}
+将这样的过程一直推到$\mathbf{x}_0$，令$\alpha_t=1-\beta_t,\bar{\alpha}_t=\Pi_{i=1}^t\alpha_i$，则有
+\begin{equation}
+    \mathbf{x}_t=\sqrt{\bar{\alpha}_t}\mathbf{x}_0+\sqrt{1-\bar{\alpha}_t}\epsilon
+\end{equation}
+在DDPM的论文中，当$\beta_t$从$\beta_1=10^{-4}$到$\beta_T=0.02$线性增长，$\alpha_t$越来越小，$\bar{\alpha}_t$趋向于0的速度越来越快。
+到最后的$T$时刻$\bar{\alpha}_T$几乎为0，这也使得$\mathbf{x}_T=\sqrt{\bar{\alpha}_T}\mathbf{x}_0+\sqrt{1-\bar{\alpha}_T}\epsilon$满足标准正态分布，
+以符合扩撒模型加噪声的需求：从慢到快的改变原图像，让图像最终均值为$0$，方差为$\mathbf{I}$
 
-这是附录内容，应该用宋体小四号字体。
-
-\begin{figure}[h!]
-	\centering
-	\makebox[0.16\textwidth]{\scriptsize 图像}
-	\makebox[0.16\textwidth]{\scriptsize 真值}
-	\makebox[0.16\textwidth]{\scriptsize Grid-5LSTM1}
-	\makebox[0.16\textwidth]{\scriptsize Grid-5LSTM3}
-	\makebox[0.16\textwidth]{\scriptsize Grid-5LSTM5} \\
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2007_000042.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2007_000042.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2007_000042.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2007_000042.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2007_000042.png} \\
-
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_003256.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_003256.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2011_003256.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2011_003256.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2011_003256.png} \\
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_001159.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_001159.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2011_001159.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2011_001159.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2011_001159.png} \\
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_000813.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_000813.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2011_000813.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2011_000813.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2011_000813.png} \\
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_003145.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2011_003145.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2011_003145.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2011_003145.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2011_003145.png} \\
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2009_004579.jpg}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/2009_004579.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/1/2009_004579.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/3/2009_004579.png}
-	\includegraphics[width=0.16\textwidth]{image/appendix1/5/2009_004579.png} \\
-	\color[rgb]{0.9,0.9,0.9}\bfseries
-	\begin{tabular}{*{7}{>{\centering\arraybackslash}p{0.10\textwidth}}}
-		\hline
-		\cellcolor[rgb]{0,0,0}  背景                 & \cellcolor[rgb]{0.5020,0,0} 飞机         & \cellcolor[rgb]{0,0.5020,0} 自行车 & \cellcolor[rgb]{0.5020,0.5020,0} 鸟 & \cellcolor[rgb]{0,0,0.5020} 船        & \cellcolor[rgb]{0.5020,0,0.5020} 瓶子 & \cellcolor[rgb]{0,0.5020,0.5020} 大巴
-		\\
-		\hline
-		\cellcolor[rgb]{0.5020,0.5020,0.5020} 汽车   & \cellcolor[rgb]{0.2510,0,0} 猫           & \cellcolor[rgb]{0.7529,0,0} 椅子   & \cellcolor[rgb]{0.2510,0.5020,0} 牛 & \cellcolor[rgb]{0.7529,0.5020,0} 桌子 & \cellcolor[rgb]{0.2510,0,0.5020} 狗   & \cellcolor[rgb]{0.7529,0,0.5020} 马   \\
-		\hline
-		\cellcolor[rgb]{0.2510,0.5020,0.5020} 摩托车 & \cellcolor[rgb]{0.7529,0.5020,0.5020} 人 & \cellcolor[rgb]{0,0.2510,0} 盆栽   & \cellcolor[rgb]{0.5020,0.2510,0} 羊 & \cellcolor[rgb]{0,0.7529,0} 沙发      & \cellcolor[rgb]{0.5020,0.7529,0} 火车 & \cellcolor[rgb]{0,0.2510,0.5020} 电视 \\
-		\hline
-	\end{tabular}
-
-	\caption{一个配有彩色表格的插图}
-\end{figure}
-
-\endinput
+\section{扩散模型加噪声逆操作均值和方差的推导}
+在加噪声逆操作的数学推导部分，综合贝叶斯公式得到了
+\begin{align*}
+    q(x_{t-1}|x_t,x_0)=\mathcal{N}(x_{t-1};\tilde{\mu}_t,\tilde{\beta}_t\mathbf{I})
+\end{align*}
